@@ -27,7 +27,6 @@ library(data.table)
 library(zoo)
 library(ggnetwork)
 library(rhandsontable)
-library(visNetwork)
 library(proxy)
 library(phangorn)
 library(cowplot)
@@ -43,6 +42,9 @@ library(logr)
 library(treeio)
 library(ggtree)
 library(ggtreeExtra)
+# Github Packages
+library(visNetwork)
+library(d3vennR)
 
 source(paste0(getwd(), "/www/resources.R"))
 
@@ -401,6 +403,21 @@ ui <- dashboardPage(
           uiOutput("distmatrix_show")
         ),
         br(), br()
+      ),
+      
+      ### Tab Isolate Comparison  ----  
+      
+      tabItem(
+        tabName = "db_comparison",
+        fluidRow(
+          column(
+            width = 3,
+            align = "center",
+            h2(p("Isolate Comparison"), style = "color:white")
+          )
+        ),
+        hr(), br(), br(), br(),
+        uiOutput("comparison_venn_diagram")
       ),
       
       ### Tab Missing Values ----
@@ -6461,6 +6478,10 @@ server <- function(input, output, session) {
               menuSubItem(
                 text = "Distance Matrix",
                 tabName = "db_distmatrix"
+              ),
+              menuSubItem(
+                text = "Isolate Comparison",
+                tabName = "db_comparison"
               )
             ),
             menuItem(
@@ -6633,6 +6654,10 @@ server <- function(input, output, session) {
                     tabName = "db_distmatrix"
                   ),
                   menuSubItem(
+                    text = "Isolate Comparison",
+                    tabName = "db_comparison"
+                  ),
+                  menuSubItem(
                     text = "Missing Values",
                     tabName = "db_missing_values",
                     icon = icon("triangle-exclamation")
@@ -6716,6 +6741,10 @@ server <- function(input, output, session) {
                   menuSubItem(
                     text = "Distance Matrix",
                     tabName = "db_distmatrix"
+                  ),
+                  menuSubItem(
+                    text = "Isolate Comparison",
+                    tabName = "db_comparison"
                   ),
                   menuSubItem(
                     text = "Missing Values",
@@ -6803,6 +6832,10 @@ server <- function(input, output, session) {
                   menuSubItem(
                     text = "Distance Matrix",
                     tabName = "db_distmatrix"
+                  ),
+                  menuSubItem(
+                    text = "Isolate Comparison",
+                    tabName = "db_comparison"
                   ),
                   menuSubItem(
                     text = "Missing Values",
@@ -6919,6 +6952,10 @@ server <- function(input, output, session) {
                     menuSubItem(
                       text = "Distance Matrix",
                       tabName = "db_distmatrix"
+                    ),
+                    menuSubItem(
+                      text = "Isolate Comparison",
+                      tabName = "db_comparison"
                     ),
                     menuSubItem(
                       text = "Missing Values",
@@ -7140,6 +7177,10 @@ server <- function(input, output, session) {
                         menuSubItem(
                           text = "Distance Matrix",
                           tabName = "db_distmatrix"
+                        ),
+                        menuSubItem(
+                          text = "Isolate Comparison",
+                          tabName = "db_comparison"
                         )
                       ),
                       menuItem(
@@ -7197,6 +7238,10 @@ server <- function(input, output, session) {
                         menuSubItem(
                           text = "Distance Matrix",
                           tabName = "db_distmatrix"
+                        ),
+                        menuSubItem(
+                          text = "Isolate Comparison",
+                          tabName = "db_comparison"
                         ),
                         menuSubItem(
                           text = "Missing Values",
@@ -9115,6 +9160,11 @@ server <- function(input, output, session) {
                   )
                 })
                 
+                #### Isolate Comparison UI ----
+                output$comparison_venn_diagram <- renderUI({
+                  d3vennROutput("vennPlot", height = "600px")
+                })
+                
                 #### Missing Values UI ----
                 
                 # Missing values calculations and table 
@@ -9306,6 +9356,10 @@ server <- function(input, output, session) {
                       menuSubItem(
                         text = "Distance Matrix",
                         tabName = "db_distmatrix"
+                      ),
+                      menuSubItem(
+                        text = "Isolate Comparison",
+                        tabName = "db_comparison"
                       )
                     ),
                     menuItem(
@@ -9838,6 +9892,10 @@ server <- function(input, output, session) {
                   tabName = "db_distmatrix"
                 ),
                 menuSubItem(
+                  text = "Isolate Comparison",
+                  tabName = "db_comparison"
+                ),
+                menuSubItem(
                   text = "Missing Values",
                   tabName = "db_missing_values",
                   selected = TRUE,
@@ -9900,6 +9958,10 @@ server <- function(input, output, session) {
               menuSubItem(
                 text = "Distance Matrix",
                 tabName = "db_distmatrix"
+              ),
+              menuSubItem(
+                text = "Isolate Comparison",
+                tabName = "db_comparison"
               )
             ),
             menuItem(
@@ -10072,6 +10134,9 @@ server <- function(input, output, session) {
   # Change scheme
   observeEvent(input$reload_db, {
     log_print("Input reload_db")
+    
+    saveRDS(DB$meta, "database_meta.rds")
+    saveRDS(DB$allelic_profile, "allelic_profile.rds")
     
     if(tail(readLines(paste0(getwd(), "/logs/script_log.txt")), 1)!= "0") {
       show_toast(

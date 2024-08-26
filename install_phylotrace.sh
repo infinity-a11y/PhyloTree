@@ -41,6 +41,7 @@ amrfinder -u
 
 # Install visNetwork modification
 Rscript -e "remotes::install_github('fpaskali/visNetwork', force = TRUE)"
+Rscript -e "remotes::install_github('Displayr/d3vennR', force = TRUE)"
 
 # Setting up the Desktop Icon
 mkdir -p $HOME/.local/share/applications
