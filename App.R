@@ -5734,6 +5734,33 @@ server <- function(input, output, session) {
     } else {NA}
   }
   
+  # Generate data for d3vennR
+  generate_venn_data <- function(subset) {
+    combi <- NULL
+    
+    for (i in 1:nrow(subset)) {
+      tmp_combi <- combn(1:nrow(subset), i)
+      tmp_combi <- split(tmp_combi, col(tmp_combi))
+      combi <- c(combi, tmp_combi)
+    }
+    
+    names(combi) <- NULL
+    venn_data <- list()
+    
+    for (i in 1:length(combi)) {
+      if (length(combi[[i]]) == 1) {
+        
+      }
+      tmp_list <- list(sets=as.list(rownames(subset)[combi[[i]]]),
+                       size=ifelse(length(combi[[i]]) > 1, 
+                                   length(Reduce(intersect, apply(subset[combi[[i]],], 1, unique))),
+                                   length(subset[combi[[i]],])))
+      venn_data[[i]] <- tmp_list
+    }
+    
+    venn_data
+  }
+  
   # Function to check for duplicate isolate IDs for multi typing start
   dupl_mult_id <- reactive({
     req(Typing$multi_sel_table)
@@ -9163,23 +9190,44 @@ server <- function(input, output, session) {
                 #### Isolate Comparison UI ----
                 observe({
                   output$comparison_venn_diagram <- renderUI({
-                    d3vennROutput("vennPlot", height = "600px")
+                    fluidRow(
+                      column(
+                        width = 3,
+                        box(
+                          solidHeader = TRUE,
+                          status = "primary",
+                          width = "100%",
+                          height = "70vh",
+                          fluidRow(
+                            column(
+                              width = 12,
+                              align = "center",
+                              h3(p("Choose isolates"), style = "color:white"),
+                              div(style = 'height: 60vh; overflow-x: scroll; overflow-y: scroll',
+                                checkboxGroupButtons(
+                                  inputId = "selected_isolates",
+                                  choices = DB$meta$`Assembly ID`,
+                                  direction = "vertical"
+                                )
+                              )
+                            )
+                          )
+                        )
+                      ),
+                      column(
+                        width = 9,
+                        d3vennROutput("vennPlot", height = "600px")
+                      )
+                    )
                   })
                 })
                 
                 observe({
                   dataset <- DB$allelic_profile
                   rownames(dataset) <- DB$meta$`Assembly ID`
-                  subset <- dataset[1:3,]
-                  # TODO Write a function to compute the venn_data programatically
-                  venn_data <- list(list(sets=list(rownames(subset)[1]), size=length(subset[1,])), 
-                                    list(sets=list(rownames(subset)[2]), size=length(subset[2,])),
-                                    list(sets=list(rownames(subset)[3]), size=length(subset[3,])),
-                                    list(sets=list(rownames(subset)[1], rownames(subset)[2]), size=length(Reduce(intersect, apply(subset[1:2,], 1, unique)))),
-                                    list(sets=list(rownames(subset)[2], rownames(subset)[3]), size=length(Reduce(intersect, apply(subset[2:3,], 1, unique)))),
-                                    list(sets=list(rownames(subset)[1], rownames(subset)[3]), size=length(Reduce(intersect, apply(subset[c(1,3),], 1, unique)))),
-                                    list(sets=list(rownames(subset)[1], rownames(subset)[2], rownames(subset)[3]), size=length(Reduce(intersect, apply(subset[1:3,], 1, unique))))
-                               )
+                  subset <- dataset[input$selected_isolates,]
+                  venn_data <- generate_venn_data(subset)
+                  
                   output$vennPlot <- renderD3vennR({
                     d3vennR(
                       data = venn_data,
