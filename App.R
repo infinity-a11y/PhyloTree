@@ -293,8 +293,7 @@ ui <- dashboardPage(
             uiOutput("delete_box"),
             uiOutput("compare_allele_box"),
             uiOutput("download_entries"),
-            br(), br(), br(), br(), br(), br(), br(), br(),
-            br(), br(), br(), br(), br(), br(), br()
+            uiOutput("save_isolate_set")
           )
         ),
         br()
@@ -5735,11 +5734,11 @@ server <- function(input, output, session) {
   }
   
   # Generate data for d3vennR
-  generate_venn_data <- function(subset) {
+  generate_venn_data <- function(isolate_sets) {
     combi <- NULL
     
-    for (i in 1:nrow(subset)) {
-      tmp_combi <- combn(1:nrow(subset), i)
+    for (i in 1:length(isolate_sets)) {
+      tmp_combi <- combn(1:length(isolate_sets), i)
       tmp_combi <- split(tmp_combi, col(tmp_combi))
       combi <- c(combi, tmp_combi)
     }
@@ -5748,13 +5747,10 @@ server <- function(input, output, session) {
     venn_data <- list()
     
     for (i in 1:length(combi)) {
-      if (length(combi[[i]]) == 1) {
-        
-      }
-      tmp_list <- list(sets=as.list(rownames(subset)[combi[[i]]]),
+      tmp_list <- list(sets=as.list(names(isolate_sets)[combi[[i]]]),
                        size=ifelse(length(combi[[i]]) > 1, 
-                                   length(Reduce(intersect, apply(subset[combi[[i]],], 1, unique))),
-                                   length(subset[combi[[i]],])))
+                                   length(Reduce(intersect, isolate_sets[combi[[i]]])),
+                                   length(unique(isolate_sets[[combi[[i]]]]))))
       venn_data[[i]] <- tmp_list
     }
     
@@ -5899,6 +5895,8 @@ server <- function(input, output, session) {
   Report <- reactiveValues() # reactive variables related to report functions
   
   Scheme <- reactiveValues() # reactive variables related to scheme  functions
+  
+  Isolate_Sets <- reactiveValues() # reactive values related to isolate compariosn
   
   # Load last used database if possible
   if(paste0(getwd(), "/execute/last_db.rds") %in% dir_ls(paste0(getwd(), "/execute"))) {
@@ -9161,6 +9159,42 @@ server <- function(input, output, session) {
                   )
                 })
                 
+                # Render save isolate set UI
+                output$save_isolate_set <- renderUI({
+                  fluidRow(
+                    column(
+                      width = 12,
+                      box(
+                        solidHeader = TRUE,
+                        status = "primary",
+                        width = "100%",
+                        fluidRow(
+                          column(
+                            width = 12,
+                            align = "center",
+                            h3(p("Save Isolate Set"), style = "color:white")
+                          )
+                        ),
+                        hr(),
+                        fluidRow(
+                          column(
+                            width = 12,
+                            align = "center",
+                            downloadBttn(
+                              "save_isolate_rds",
+                              style = "simple",
+                              label = "",
+                              size = "sm",
+                              icon = icon("download"),
+                              color = "primary"
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                })
+                
                 # Render entry deletion select input
                 output$delete_select <- renderUI({
                   pickerInput("select_delete",
@@ -9201,17 +9235,35 @@ server <- function(input, output, session) {
                           fluidRow(
                             column(
                               width = 12,
+                              shinyFilesButton(
+                                "isolate_datasets",
+                                "Upload Isolate Set" ,
+                                icon = icon("file"),
+                                title = "Select PhyloTrace Hashed Isolate File",
+                                multiple = TRUE,
+                                buttonType = "default",
+                                class = NULL,
+                                root = path_home()
+                              )
+                            )
+                          ),
+                          hr(),
+                          fluidRow(
+                            column(
+                              width = 12,
                               align = "center",
-                              h3(p("Choose isolates"), style = "color:white"),
-                              div(style = 'height: 60vh; overflow-x: scroll; overflow-y: scroll',
+                              h3(p("Choose Isolates"), style = "color:white"),
+                              div(style = 'height: 43vh; overflow-x: scroll; overflow-y: scroll',
                                 checkboxGroupButtons(
                                   inputId = "selected_isolates",
-                                  choices = DB$meta$`Assembly ID`,
+                                  choices = c("Current Dataset"),
                                   direction = "vertical"
                                 )
                               )
                             )
-                          )
+                          ),
+                          hr(),
+                          actionButton("plotVenn", "Plot Venn Diagram")
                         )
                       ),
                       column(
@@ -9222,93 +9274,125 @@ server <- function(input, output, session) {
                   })
                 })
                 
+                # Isolate Set file upload
                 observe({
-                  dataset <- DB$allelic_profile
-                  rownames(dataset) <- DB$meta$`Assembly ID`
-                  subset <- dataset[input$selected_isolates,]
-                  venn_data <- generate_venn_data(subset)
-                  
-                  output$vennPlot <- renderD3vennR({
-                    d3vennR(
-                      data = venn_data,
-                      colours = htmlwidgets::JS(
-                        sprintf('d3.scale.category10().range(%s.map(function(col){return eval(col)}))',
-                          jsonlite::toJSON(lapply(
-                            c("#62FA6B", "#7A0C02", "#4777EF", "#FE9B2D", "#D2E934"), # FIXME use Rainbow or any other pallete create instead
-                            function(color) {
-                              rgb <- t(col2rgb(color))
-                              sprintf("d3.rgb(%s)", paste0(rgb, collapse = ","))
-                            }
-                          ), auto_unbox = TRUE)
-                        )
-                      ),
-                      tasks = list(
-                        htmlwidgets::JS( # FIXME move this out of here
-                          'function(){
-                            var div = d3.select(this);
-                  
-                            // add a tooltip
-                            var tooltip = d3.select("body").append("div")
-                              .attr("class", "venntooltip")
-                              .style("position", "absolute")
-                              .style("text-align", "center")
-                              .style("width", 128)
-                              .style("height", 16)
-                              .style("background", "#333")
-                              .style("color", "#ddd")
-                              .style("padding", "2px")
-                              .style("border", "0px")
-                              .style("border-radius", "8px")
-                              .style("opacity", 0);
-                  
-                            div.selectAll("path")
-                              .style("stroke-opacity", 0)
-                              .style("stroke", "#fff")
-                              .style("stroke-width", 0);
-                  
-                            // Add white text color to the group names
-                            div.selectAll("text")
-                              .style("fill", "white")
-                                .style("font-size", "18px");  // Set font size
-                  
-                            // add listeners to all the groups to display tooltip on mouseover
-                            div.selectAll("g")
-                              .on("mouseover", function(d, i) {
-                                // sort all the areas relative to the current item
-                                venn.sortAreas(div, d);
-                  
-                                // Display a tooltip with the current size
-                                tooltip.transition().duration(400).style("opacity", .9);
-                                tooltip.text(d.size + " Isolates");
-                  
-                                // highlight the current path
-                                var selection = d3.select(this).transition("tooltip").duration(400);
-                                selection.select("path")
-                                  .style("stroke-width", 3)
-                                  .style("fill-opacity", d.sets.length == 1 ? .55 : .1)
-                                  .style("stroke-opacity", 1);
-                              })
-                              .on("mousemove", function() {
-                                tooltip.style("left", (d3.event.pageX) + "px")
-                                  .style("top", (d3.event.pageY - 28) + "px");
-                              })
-                              .on("mouseout", function(d, i) {
-                                tooltip.transition().duration(400).style("opacity", 0);
-                                var selection = d3.select(this).transition("tooltip").duration(400);
-                                selection.select("path")
-                                  .style("stroke-width", 0)
-                                  .style("fill-opacity", d.sets.length == 1 ? .4 : .0)
-                                  .style("stroke-opacity", 0);
-                              })
-                              .on("click", function(d, i) {
-                                // Trigger a Shiny event on click
-                                Shiny.setInputValue("venn_click", d.sets, {priority: "event"});
-                              });
-                          }'
+                  shinyFileChoose(input,
+                                  "isolate_datasets",
+                                  roots = c(home = path_home()),
+                                  session = session)
+                  Isolate_Sets$paths <- parseFilePaths(roots = c(home = path_home()), input$isolate_datasets)
+                })
+                
+                # Choose Isolate Sets buttons
+                observe({
+                  if(!nrow(Isolate_Sets$paths) < 1) {
+                    updateCheckboxGroupButtons(
+                      session,
+                      "selected_isolates",
+                      choices = c("Current Dataset", Isolate_Sets$paths$name)
+                    )
+                  }
+                })
+                
+                observeEvent(input$plotVenn, {
+                  if (!length(input$selected_isolates) < 2) {
+                    # Create allellic profiles for the current dataset
+                    # FIXME Maybe this should not be done here
+                    
+                    isolate_sets <- list()
+                    for (filename in input$selected_isolates) {
+                      if (filename == "Current Dataset") {
+                        curr_db <- apply(DB$allelic_profile, 1, function(x) paste(x, collapse = ":"))
+                        isolate_sets[["Current Database"]] <- curr_db
+                      } else {
+                        tmp_isolate <- readRDS(Isolate_Sets$paths$datapath[Isolate_Sets$paths$name == filename])
+                        isolate_sets[[filename]] <- tmp_isolate
+                      }
+                    }
+                    venn_data <- generate_venn_data(isolate_sets)
+                    
+                    output$vennPlot <- renderD3vennR({
+                      d3vennR(
+                        data = venn_data,
+                        colours = htmlwidgets::JS(
+                          sprintf('d3.scale.category10().range(%s.map(function(col){return eval(col)}))',
+                            jsonlite::toJSON(lapply(
+                              c("#62FA6B", "#7A0C02", "#4777EF", "#FE9B2D", "#D2E934"), # FIXME use Rainbow or any other pallete create instead
+                              function(color) {
+                                rgb <- t(col2rgb(color))
+                                sprintf("d3.rgb(%s)", paste0(rgb, collapse = ","))
+                              }
+                            ), auto_unbox = TRUE)
+                          )
+                        ),
+                        tasks = list(
+                          htmlwidgets::JS( # FIXME move this out of here
+                            'function(){
+                              var div = d3.select(this);
+                    
+                              // add a tooltip
+                              var tooltip = d3.select("body").append("div")
+                                .attr("class", "venntooltip")
+                                .style("position", "absolute")
+                                .style("text-align", "center")
+                                .style("width", 128)
+                                .style("height", 16)
+                                .style("background", "#333")
+                                .style("color", "#ddd")
+                                .style("padding", "2px")
+                                .style("border", "0px")
+                                .style("border-radius", "8px")
+                                .style("opacity", 0);
+                    
+                              div.selectAll("path")
+                                .style("stroke-opacity", 0)
+                                .style("stroke", "#fff")
+                                .style("stroke-width", 0);
+                    
+                              // Add white text color to the group names
+                              div.selectAll("text")
+                                .style("fill", "white")
+                                  .style("font-size", "18px");  // Set font size
+                    
+                              // add listeners to all the groups to display tooltip on mouseover
+                              div.selectAll("g")
+                                .on("mouseover", function(d, i) {
+                                  // sort all the areas relative to the current item
+                                  venn.sortAreas(div, d);
+                    
+                                  // Display a tooltip with the current size
+                                  tooltip.transition().duration(400).style("opacity", .9);
+                                  tooltip.text(d.size + " Isolates");
+                    
+                                  // highlight the current path
+                                  var selection = d3.select(this).transition("tooltip").duration(400);
+                                  selection.select("path")
+                                    .style("stroke-width", 3)
+                                    .style("fill-opacity", d.sets.length == 1 ? .55 : .1)
+                                    .style("stroke-opacity", 1);
+                                })
+                                .on("mousemove", function() {
+                                  tooltip.style("left", (d3.event.pageX) + "px")
+                                    .style("top", (d3.event.pageY - 28) + "px");
+                                })
+                                .on("mouseout", function(d, i) {
+                                  tooltip.transition().duration(400).style("opacity", 0);
+                                  var selection = d3.select(this).transition("tooltip").duration(400);
+                                  selection.select("path")
+                                    .style("stroke-width", 0)
+                                    .style("fill-opacity", d.sets.length == 1 ? .4 : .0)
+                                    .style("stroke-opacity", 0);
+                                })
+                                .on("click", function(d, i) {
+                                  // Trigger a Shiny event on click
+                                  Shiny.setInputValue("venn_click", d.sets, {priority: "event"});
+                                });
+                            }'
+                          )
                         )
                       )
-                    )
-                  })
+                    })
+                  }
                 })
                 
                 #### Missing Values UI ----
@@ -9619,6 +9703,7 @@ server <- function(input, output, session) {
                 output$del_bttn <- NULL
                 output$compare_allele_box <- NULL
                 output$download_entries <- NULL
+                output$save_isolate_set <- NULL
                 output$missing_values <- NULL
                 output$delete_box <- NULL
                 output$entry_table_controls <- NULL
@@ -11348,6 +11433,26 @@ server <- function(input, output, session) {
       } 
       
       write.csv(download_matrix, file, row.names=FALSE, quote=FALSE) 
+    }
+  )
+  
+  #### Save isolate set as RDS ----
+  output$save_isolate_rds <- downloadHandler(
+    filename = function() {
+      log_print(paste0("Save isolate set ", paste0(Sys.Date(), "_", gsub(" ", "_", DB$scheme), "_Isolate_Set.rds")))
+      
+      paste0(Sys.Date(), "_", gsub(" ", "_", DB$scheme), "_Isolate_Set.rds")
+    },
+    content = function(file) {
+      download_matrix <- hot_to_r(input$db_entries)
+      
+      # Create a vector of concatenated hashes per row
+      isolate_set <- apply(DB$allelic_profile[download_matrix$Include == TRUE,], 1,
+                           function(x) paste(x, collapse = ":"))
+      # Set row names
+      names(isolate_set) <- download_matrix[["Assembly ID"]][download_matrix$Include == TRUE]
+      
+      saveRDS(isolate_set, file) 
     }
   )
   
