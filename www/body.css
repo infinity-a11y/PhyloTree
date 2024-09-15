@@ -783,6 +783,14 @@ button#download_entry_table_bttn {
   margin-top: 55px;
 }
 
+button#save_isolate_rds_bttn {
+  height: 34px; 
+  background: #282F38;
+  color: #ffffff;
+  border: 1px solid white;
+  transition: border-color 0.3s ease;
+}
+
 #download_entry_table_bttn .fas .fa-download,
 #download_entry_table_bttn > i {
   position: relative;
@@ -3096,4 +3104,23 @@ button#download_resistance_profile_bttn {
 
 #screening_fail {
   max-width: 1000px;
+}
+
+/* Isolate Set Comaprison */
+button#isolate_datasets {
+  background: #282F38;
+  Color: #ffffff;
+  border: 1px solid white;
+}
+
+.select_isolate_set button {
+  background: #282F38;
+  Color: #ffffff;
+  border: 1px solid white;
+}
+
+button#plotVenn {
+  background: #282F38;
+  Color: #ffffff;
+  border: 1px solid white;
 }

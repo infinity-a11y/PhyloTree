@@ -415,7 +415,7 @@ ui <- dashboardPage(
             h2(p("Isolate Comparison"), style = "color:white")
           )
         ),
-        hr(), br(), br(), br(),
+        hr(),
         uiOutput("comparison_venn_diagram")
       ),
       
@@ -5370,7 +5370,7 @@ server <- function(input, output, session) {
   
   phylotraceVersion <- paste("1.5.0")
   
-  #TODO Enable this, or leave disabled
+  #FIXME This breaks refreshing.
   # Kill server on session end
   session$onSessionEnded( function() {
     stopApp()
@@ -5896,7 +5896,8 @@ server <- function(input, output, session) {
   
   Scheme <- reactiveValues() # reactive variables related to scheme  functions
   
-  Isolate_Sets <- reactiveValues() # reactive values related to isolate compariosn
+  Isolate_Sets <- reactiveValues(paths = NULL,
+                                 isolates = list()) # reactive values related to isolate comparison
   
   # Load last used database if possible
   if(paste0(getwd(), "/execute/last_db.rds") %in% dir_ls(paste0(getwd(), "/execute"))) {
@@ -9178,7 +9179,19 @@ server <- function(input, output, session) {
                         hr(),
                         fluidRow(
                           column(
-                            width = 12,
+                            width = 8,
+                            div(
+                              class = "mat-switch-db",
+                              materialSwitch(
+                                "download_isolate_sets_include",
+                                h5(p("Only Included Entries"), style = "color:white; padding-left: 0px; position: relative; top: -4px; right: -5px;"),
+                                value = FALSE,
+                                right = TRUE
+                              )
+                            )
+                          ),
+                          column(
+                            width = 4,
                             align = "center",
                             downloadBttn(
                               "save_isolate_rds",
@@ -9231,7 +9244,7 @@ server <- function(input, output, session) {
                           solidHeader = TRUE,
                           status = "primary",
                           width = "100%",
-                          height = "70vh",
+                          height = "80vh",
                           fluidRow(
                             column(
                               width = 12,
@@ -9247,15 +9260,15 @@ server <- function(input, output, session) {
                               )
                             )
                           ),
-                          hr(),
                           fluidRow(
                             column(
                               width = 12,
                               align = "center",
-                              h3(p("Choose Isolates"), style = "color:white"),
-                              div(style = 'height: 43vh; overflow-x: scroll; overflow-y: scroll',
+                              h3(p("Choose Isolates Set"), style = "color:white"),
+                              div(class="select_isolate_set", 
+                                  style = 'height: 20vh; overflow-y: scroll',
                                 checkboxGroupButtons(
-                                  inputId = "selected_isolates",
+                                  inputId = "selected_isolate_sets",
                                   choices = c("Current Dataset"),
                                   direction = "vertical"
                                 )
@@ -9263,12 +9276,22 @@ server <- function(input, output, session) {
                             )
                           ),
                           hr(),
+                          div(style = 'height: 35vh; overflow-y: scroll',
+                              uiOutput("intersect_info")),
+                          hr(),
                           actionButton("plotVenn", "Plot Venn Diagram")
                         )
                       ),
                       column(
                         width = 9,
-                        d3vennROutput("vennPlot", height = "600px")
+                        d3vennROutput("vennPlot", height = "65vh"),
+                        box(
+                          solidHeader = TRUE,
+                          status = "primary",
+                          width = "95%",
+                          height = "15vh",
+                          uiOutput("unique_isolate_info")
+                        )
                       )
                     )
                   })
@@ -9288,28 +9311,27 @@ server <- function(input, output, session) {
                   if(!nrow(Isolate_Sets$paths) < 1) {
                     updateCheckboxGroupButtons(
                       session,
-                      "selected_isolates",
+                      "selected_isolate_sets",
                       choices = c("Current Dataset", Isolate_Sets$paths$name)
                     )
                   }
                 })
                 
                 observeEvent(input$plotVenn, {
-                  if (!length(input$selected_isolates) < 2) {
-                    # Create allellic profiles for the current dataset
-                    # FIXME Maybe this should not be done here
-                    
-                    isolate_sets <- list()
-                    for (filename in input$selected_isolates) {
+                  if (!length(input$selected_isolate_sets) < 2) {
+                    Isolate_Sets$isolates <- NULL # Unloads unneeded isolates
+                    # Read RDS files containing isolate sets, and create a set for the current database.
+                    for (filename in input$selected_isolate_sets) {
                       if (filename == "Current Dataset") {
                         curr_db <- apply(DB$allelic_profile, 1, function(x) paste(x, collapse = ":"))
-                        isolate_sets[["Current Database"]] <- curr_db
+                        names(curr_db) <- DB$meta[["Assembly ID"]]
+                        Isolate_Sets$isolates[["Current Database"]] <- curr_db
                       } else {
                         tmp_isolate <- readRDS(Isolate_Sets$paths$datapath[Isolate_Sets$paths$name == filename])
-                        isolate_sets[[filename]] <- tmp_isolate
+                        Isolate_Sets$isolates[[filename]] <- tmp_isolate
                       }
                     }
-                    venn_data <- generate_venn_data(isolate_sets)
+                    venn_data <- generate_venn_data(Isolate_Sets$isolates)
                     
                     output$vennPlot <- renderD3vennR({
                       d3vennR(
@@ -9393,6 +9415,65 @@ server <- function(input, output, session) {
                       )
                     })
                   }
+                })
+                
+                # Venn Diagram Intersect Info
+                observeEvent(input$venn_click, {
+                  tmp_intersect <- Reduce(intersect, Isolate_Sets$isolates[input$venn_click])
+                  names(tmp_intersect) <- paste("Allelic Profile", 1:length(tmp_intersect))
+                  output$intersect_info <- renderUI({
+                    div(style="color: white;",
+                      HTML(paste("Intersect", "<b>", paste(input$venn_click, collapse = " ⋂ "), "</b>")),
+                      br(),
+                      paste(length(tmp_intersect), "total isolates."),
+                      br(),
+                      paste(length(unique(tmp_intersect)), "unique isolates."),
+                      br(), br(),
+                      selectInput(
+                        "unique_selector",
+                        "Select Unique Isolates",
+                        choices = tmp_intersect,
+                        width = "50%"
+                      ),
+                      br(),
+                      uiOutput("intersectExtraInfo")
+                    )
+                  })
+                })
+                
+                observeEvent(input$unique_selector,{
+                  output$intersectExtraInfo <- renderUI({
+                    lapply(input$venn_click, function(name) {
+                      isolates_names <- names(Isolate_Sets$isolates[[name]][Isolate_Sets$isolates[[name]] == input$unique_selector])
+                      div(
+                        HTML(paste("<b>", name, "</b>")),
+                        lapply(isolates_names, function(n) {
+                          div(
+                            tags$li(
+                              n
+                            )
+                          )
+                        }),
+                        br()
+                      )
+                    })
+                  })
+                })
+                
+                observe({
+                  output$unique_isolate_info <- renderUI({
+                    if (is.null(input$unique_selector)) {
+                      div(
+                        style = "color: white;",
+                        HTML("No unique isolate selected")
+                      )
+                    } else {
+                      div(
+                        style = "color: white; height: 12vh; word-wrap: break-word; overflow-y: scroll;",
+                        input$unique_selector,
+                      )
+                    }
+                  })
                 })
                 
                 #### Missing Values UI ----
@@ -11446,12 +11527,19 @@ server <- function(input, output, session) {
     content = function(file) {
       download_matrix <- hot_to_r(input$db_entries)
       
-      # Create a vector of concatenated hashes per row
-      isolate_set <- apply(DB$allelic_profile[download_matrix$Include == TRUE,], 1,
-                           function(x) paste(x, collapse = ":"))
-      # Set row names
-      names(isolate_set) <- download_matrix[["Assembly ID"]][download_matrix$Include == TRUE]
-      
+      if (input$download_isolate_sets_include) {
+        # Create a vector of concatenated hashes per row
+        isolate_set <- apply(DB$allelic_profile[download_matrix$Include == TRUE,], 1,
+                             function(x) paste(x, collapse = ":"))
+        # Set row names
+        names(isolate_set) <- download_matrix[["Assembly ID"]][download_matrix$Include == TRUE]
+      } else {
+        # Create a vector of concatenated hashes per row
+        isolate_set <- apply(DB$allelic_profile, 1,
+                             function(x) paste(x, collapse = ":"))
+        # Set row names
+        names(isolate_set) <- download_matrix[["Assembly ID"]]
+      }
       saveRDS(isolate_set, file) 
     }
   )
