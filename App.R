@@ -38,6 +38,7 @@ library(DT)
 library(shinyBS)
 library(openssl)
 library(logr)
+library(ggvenn)
 # Bioconductor Packages
 library(treeio)
 library(ggtree)
@@ -9284,7 +9285,8 @@ server <- function(input, output, session) {
                       ),
                       column(
                         width = 9,
-                        d3vennROutput("vennPlot", height = "65vh"),
+                        plotOutput("vennPlot", height = "65vh"),
+                        # d3vennROutput("vennPlot", height = "65vh"),
                         box(
                           solidHeader = TRUE,
                           status = "primary",
@@ -9331,89 +9333,95 @@ server <- function(input, output, session) {
                         Isolate_Sets$isolates[[filename]] <- tmp_isolate
                       }
                     }
-                    venn_data <- generate_venn_data(Isolate_Sets$isolates)
                     
-                    output$vennPlot <- renderD3vennR({
-                      d3vennR(
-                        data = venn_data,
-                        colours = htmlwidgets::JS(
-                          sprintf('d3.scale.category10().range(%s.map(function(col){return eval(col)}))',
-                            jsonlite::toJSON(lapply(
-                              c("#62FA6B", "#7A0C02", "#4777EF", "#FE9B2D", "#D2E934"), # FIXME use Rainbow or any other pallete create instead
-                              function(color) {
-                                rgb <- t(col2rgb(color))
-                                sprintf("d3.rgb(%s)", paste0(rgb, collapse = ","))
-                              }
-                            ), auto_unbox = TRUE)
-                          )
-                        ),
-                        tasks = list(
-                          htmlwidgets::JS( # FIXME move this out of here
-                            'function(){
-                              var div = d3.select(this);
-                    
-                              // add a tooltip
-                              var tooltip = d3.select("body").append("div")
-                                .attr("class", "venntooltip")
-                                .style("position", "absolute")
-                                .style("text-align", "center")
-                                .style("width", 128)
-                                .style("height", 16)
-                                .style("background", "#333")
-                                .style("color", "#ddd")
-                                .style("padding", "2px")
-                                .style("border", "0px")
-                                .style("border-radius", "8px")
-                                .style("opacity", 0);
-                    
-                              div.selectAll("path")
-                                .style("stroke-opacity", 0)
-                                .style("stroke", "#fff")
-                                .style("stroke-width", 0);
-                    
-                              // Add white text color to the group names
-                              div.selectAll("text")
-                                .style("fill", "white")
-                                  .style("font-size", "18px");  // Set font size
-                    
-                              // add listeners to all the groups to display tooltip on mouseover
-                              div.selectAll("g")
-                                .on("mouseover", function(d, i) {
-                                  // sort all the areas relative to the current item
-                                  venn.sortAreas(div, d);
-                    
-                                  // Display a tooltip with the current size
-                                  tooltip.transition().duration(400).style("opacity", .9);
-                                  tooltip.text(d.size + " Isolates");
-                    
-                                  // highlight the current path
-                                  var selection = d3.select(this).transition("tooltip").duration(400);
-                                  selection.select("path")
-                                    .style("stroke-width", 3)
-                                    .style("fill-opacity", d.sets.length == 1 ? .55 : .1)
-                                    .style("stroke-opacity", 1);
-                                })
-                                .on("mousemove", function() {
-                                  tooltip.style("left", (d3.event.pageX) + "px")
-                                    .style("top", (d3.event.pageY - 28) + "px");
-                                })
-                                .on("mouseout", function(d, i) {
-                                  tooltip.transition().duration(400).style("opacity", 0);
-                                  var selection = d3.select(this).transition("tooltip").duration(400);
-                                  selection.select("path")
-                                    .style("stroke-width", 0)
-                                    .style("fill-opacity", d.sets.length == 1 ? .4 : .0)
-                                    .style("stroke-opacity", 0);
-                                })
-                                .on("click", function(d, i) {
-                                  // Trigger a Shiny event on click
-                                  Shiny.setInputValue("venn_click", d.sets, {priority: "event"});
-                                });
-                            }'
-                          )
-                        )
-                      )
-                    })
+                    output$vennPlot <- renderPlot({
+                      ggvenn(Isolate_Sets$isolates, input$selected_isolate_sets,
+                             set_name_color = "white", set_name_size = 6, show_percentage = TRUE)
+                    }, bg = "transparent")
+                    # TODO This should be enabled with switch
+                    # venn_data <- generate_venn_data(Isolate_Sets$isolates)
+                    # 
+                    # output$vennPlot <- renderD3vennR({
+                    #   d3vennR(
+                    #     data = venn_data,
+                    #     colours = htmlwidgets::JS(
+                    #       sprintf('d3.scale.category10().range(%s.map(function(col){return eval(col)}))',
+                    #         jsonlite::toJSON(lapply(
+                    #           c("#62FA6B", "#7A0C02", "#4777EF", "#FE9B2D", "#D2E934"), # FIXME use Rainbow or any other pallete create instead
+                    #           function(color) {
+                    #             rgb <- t(col2rgb(color))
+                    #             sprintf("d3.rgb(%s)", paste0(rgb, collapse = ","))
+                    #           }
+                    #         ), auto_unbox = TRUE)
+                    #       )
+                    #     ),
+                    #     tasks = list(
+                    #       htmlwidgets::JS( # FIXME move this out of here
+                    #         'function(){
+                    #           var div = d3.select(this);
+                    # 
+                    #           // add a tooltip
+                    #           var tooltip = d3.select("body").append("div")
+                    #             .attr("class", "venntooltip")
+                    #             .style("position", "absolute")
+                    #             .style("text-align", "center")
+                    #             .style("width", 128)
+                    #             .style("height", 16)
+                    #             .style("background", "#333")
+                    #             .style("color", "#ddd")
+                    #             .style("padding", "2px")
+                    #             .style("border", "0px")
+                    #             .style("border-radius", "8px")
+                    #             .style("opacity", 0);
+                    # 
+                    #           div.selectAll("path")
+                    #             .style("stroke-opacity", 0)
+                    #             .style("stroke", "#fff")
+                    #             .style("stroke-width", 0);
+                    # 
+                    #           // Add white text color to the group names
+                    #           div.selectAll("text")
+                    #             .style("fill", "white")
+                    #               .style("font-size", "18px");  // Set font size
+                    # 
+                    #           // add listeners to all the groups to display tooltip on mouseover
+                    #           div.selectAll("g")
+                    #             .on("mouseover", function(d, i) {
+                    #               // sort all the areas relative to the current item
+                    #               venn.sortAreas(div, d);
+                    # 
+                    #               // Display a tooltip with the current size
+                    #               tooltip.transition().duration(400).style("opacity", .9);
+                    #               tooltip.text(d.size + " Isolates");
+                    # 
+                    #               // highlight the current path
+                    #               var selection = d3.select(this).transition("tooltip").duration(400);
+                    #               selection.select("path")
+                    #                 .style("stroke-width", 3)
+                    #                 .style("fill-opacity", d.sets.length == 1 ? .55 : .1)
+                    #                 .style("stroke-opacity", 1);
+                    #             })
+                    #             .on("mousemove", function() {
+                    #               tooltip.style("left", (d3.event.pageX) + "px")
+                    #                 .style("top", (d3.event.pageY - 28) + "px");
+                    #             })
+                    #             .on("mouseout", function(d, i) {
+                    #               tooltip.transition().duration(400).style("opacity", 0);
+                    #               var selection = d3.select(this).transition("tooltip").duration(400);
+                    #               selection.select("path")
+                    #                 .style("stroke-width", 0)
+                    #                 .style("fill-opacity", d.sets.length == 1 ? .4 : .0)
+                    #                 .style("stroke-opacity", 0);
+                    #             })
+                    #             .on("click", function(d, i) {
+                    #               // Trigger a Shiny event on click
+                    #               Shiny.setInputValue("venn_click", d.sets, {priority: "event"});
+                    #             });
+                    #         }'
+                    #       )
+                    #     )
+                    #   )
+                    # })
                   }
                 })
                 
